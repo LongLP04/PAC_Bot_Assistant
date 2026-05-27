@@ -34,8 +34,9 @@ def register_handlers():
 
         bot.reply_to(
             message,
-            "Xin chào! Em là PAC Assistant - Trợ lý ảo IT Support nội bộ. "
-            "Anh/chị cần em hỗ trợ vấn đề gì thì nhập nội dung bên dưới nhé."
+            "Xin chào👋! Em là PAC Assistant 😊- Trợ lý ảo IT Support nội bộ. "
+            "Anh/chị cần em hỗ trợ vấn đề gì thì nhập nội dung bên dưới ạ."
+            "Anh/chị cứ xưng hô anh/chị thoải mái nhé 😊."
         )
 
     # Xử lý lệnh /help
