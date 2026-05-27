@@ -1,7 +1,9 @@
 from app.handlers import register_handlers
 from app.commands import setup_bot_commands
 from app.bot_instance import bot
+from app.cache import reload_cache
 
+reload_cache()
 register_handlers()
 setup_bot_commands()
 

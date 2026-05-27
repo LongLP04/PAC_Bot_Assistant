@@ -1,5 +1,6 @@
 from app.bot_instance import bot
-from app.loader import load_all_knowledge, load_system_prompt, count_txt_files
+from app.loader import count_txt_files
+from app.cache import get_knowledge_cache, get_system_prompt_cache, reload_cache
 from app.memory import get_user_history, add_to_history, clear_history
 from app.prompts import build_system_prompt, build_user_context
 from app.groq_service import ask_groq
@@ -74,16 +75,33 @@ def register_handlers():
         training_count = count_txt_files(TRAIN_FOLDER)
         skills_count = count_txt_files(SKILL_FOLDER)
 
+        knowledge = get_knowledge_cache()
+        system_prompt = get_system_prompt_cache()
+
         debug_text = (
             "Thông tin kiểm tra bot:\n"
             f"- Tài liệu training: {training_count} file .txt\n"
             f"- Luật/kỹ năng bot: {skills_count} file .txt\n"
+            f"- Cache training: {len(knowledge)} ký tự\n"
+            f"- Cache skills: {len(system_prompt)} ký tự\n"
             f"- Model: {GROQ_MODEL}\n"
             f"- Phiên bản: {BOT_VERSION}"
         )
 
         bot.reply_to(message, debug_text)
 
+    #Xư lý lệnh /reload 
+    @bot.message_handler(commands=["reload"])
+    def reload_bot_data(message):
+        result = reload_cache()
+
+        reload_text = (
+            "Em đã nạp lại tài liệu và luật bot.\n"
+            f"- Dung lượng tài liệu training: {result['knowledge_length']} ký tự\n"
+            f"- Dung lượng luật/kỹ năng bot: {result['system_prompt_length']} ký tự"
+        )
+
+        bot.reply_to(message, reload_text)
 
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
@@ -95,8 +113,8 @@ def register_handlers():
             return
 
         try:
-            knowledge = load_all_knowledge()
-            base_instructions = load_system_prompt()
+            knowledge = get_knowledge_cache()
+            base_instructions = get_system_prompt_cache()
 
             system_prompt = build_system_prompt(base_instructions)
             user_context = build_user_context(knowledge, user_question)
