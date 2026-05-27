@@ -6,13 +6,23 @@ from app.prompts import build_system_prompt, build_user_context
 from app.groq_service import ask_groq
 from app.config import BOT_NAME, BOT_VERSION, BOT_ENV, GROQ_MODEL, TRAIN_FOLDER, SKILL_FOLDER
 from app.logger import logger
-
+from app.security import (
+    is_allowed_user,
+    is_admin,
+    deny_access,
+    deny_admin,
+    get_user_id,
+)
 
 def register_handlers():
 
     # Xử lý lệnh /start
     @bot.message_handler(commands=["start"])
     def send_welcome(message):
+        if not is_allowed_user(message):
+            deny_access(bot, message)
+            return
+
         user_id = message.from_user.id
         clear_history(user_id)
 
@@ -25,6 +35,10 @@ def register_handlers():
     # Xử lý lệnh /help
     @bot.message_handler(commands=["help"])
     def send_help(message):
+        if not is_allowed_user(message):
+            deny_access(bot, message)
+            return
+
         help_text = (
             "Em có thể hỗ trợ các nhóm việc sau:\n"
             "- Sự cố máy in, in ấn, kết nối máy in\n"
@@ -41,6 +55,9 @@ def register_handlers():
     # Xử lý lệnh /status
     @bot.message_handler(commands=["status"])
     def send_status(message):
+        if not is_allowed_user(message):
+            deny_access(bot, message)
+            return
         bot.reply_to(
             message,
             "🟢 PAC Assistant đang trực tuyến và sẵn sàng hỗ trợ anh/chị."
@@ -49,6 +66,10 @@ def register_handlers():
     # Xử lý lệnh /clear
     @bot.message_handler(commands=["clear"])
     def clear_user_memory(message):
+        if not is_allowed_user(message):
+            deny_access(bot, message)
+            return
+
         user_id = message.from_user.id
         clear_history(user_id)
 
@@ -60,6 +81,10 @@ def register_handlers():
     # Xử lý lệnh /version
     @bot.message_handler(commands=["version"])
     def send_version(message):
+        if not is_allowed_user(message):
+            deny_access(bot, message)
+            return
+
         version_text = (
             f"{BOT_NAME}\n"
             f"Phiên bản: {BOT_VERSION}\n"
@@ -72,6 +97,10 @@ def register_handlers():
     # Xử lý lệnh /debug
     @bot.message_handler(commands=["debug"])
     def send_debug(message):
+        if not is_admin(message):
+            deny_admin(bot, message)
+            return
+
         training_count = count_txt_files(TRAIN_FOLDER)
         skills_count = count_txt_files(SKILL_FOLDER)
 
@@ -93,6 +122,10 @@ def register_handlers():
     #Xư lý lệnh /reload 
     @bot.message_handler(commands=["reload"])
     def reload_bot_data(message):
+        if not is_admin(message):
+            deny_admin(bot, message)
+            return
+
         result = reload_cache()
 
         reload_text = (
@@ -103,8 +136,23 @@ def register_handlers():
 
         bot.reply_to(message, reload_text)
 
+    # Xử lý lệnh /myid
+    @bot.message_handler(commands=["myid"])
+    def send_my_id(message):
+        user_id = get_user_id(message)
+
+        bot.reply_to(
+            message,
+            f"Telegram user ID của anh/chị là: {user_id}"
+        )
+
+
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
+        if not is_allowed_user(message):
+            deny_access(bot, message)
+            return
+
         user_id = message.from_user.id
         user_question = message.text
 
