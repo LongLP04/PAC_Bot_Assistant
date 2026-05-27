@@ -12,6 +12,7 @@ def setup_bot_commands():
         types.BotCommand("debug", "Kiểm tra cấu hình và tài liệu bot"),
         types.BotCommand("reload", "Nạp lại dữ liệu bot"),
         types.BotCommand("myid", "Xem Telegram user ID của tôi"),
+        types.BotCommand("docs", "Xem danh sách tài liệu đã upload"),
         ]
 
     bot.set_my_commands(commands)

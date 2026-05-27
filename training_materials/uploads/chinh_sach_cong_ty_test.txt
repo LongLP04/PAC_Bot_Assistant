@@ -1,0 +1,6 @@
+[CHÍNH SÁCH CÔNG TY TEST]
+
+Chính sách thử nghiệm của công ty quy định rằng:
+- Nhân sự khi gặp sự cố IT phải báo qua PAC Assistant.
+- Các yêu cầu IT sẽ được ghi nhận và xử lý theo mức độ ưu tiên.
+- Câu kiểm tra đặc biệt: Nếu người dùng hỏi "chính sách test PAC là gì", bot phải trả lời rằng "Chính sách test PAC đã được nạp thành công."

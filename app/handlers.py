@@ -13,6 +13,12 @@ from app.security import (
     deny_admin,
     get_user_id,
 )
+from app.document_service import (
+    is_txt_file,
+    save_uploaded_txt_file,
+    list_uploaded_documents,
+)
+
 
 def register_handlers():
 
@@ -145,6 +151,72 @@ def register_handlers():
             message,
             f"Telegram user ID của anh/chị là: {user_id}"
         )
+
+    # Xử lý lệnh /docs
+    @bot.message_handler(commands=["docs"])
+    def send_docs(message):
+        if not is_admin(message):
+            deny_admin(bot, message)
+            return
+
+        docs = list_uploaded_documents()
+
+        if not docs:
+            bot.reply_to(
+                message,
+                "Hiện chưa có tài liệu upload nào trong training_materials/uploads/."
+            )
+            return
+
+        lines = ["Danh sách tài liệu đã upload:"]
+
+        for index, doc in enumerate(docs, start=1):
+            lines.append(
+                f"{index}. {doc['name']} | {doc['size']} bytes | cập nhật: {doc['modified']}"
+            )
+
+        bot.reply_to(message, "\n".join(lines))
+
+    
+    @bot.message_handler(content_types=["document"])
+    def handle_document_upload(message):
+        if not is_admin(message):
+            deny_admin(bot, message)
+            return
+
+        document = message.document
+        file_name = document.file_name
+
+        if not is_txt_file(file_name):
+            bot.reply_to(
+                message,
+                "Hiện tại em chỉ nhận file .txt để nạp tài liệu. "
+                "Anh vui lòng chuyển văn bản sang .txt rồi gửi lại."
+            )
+            return
+
+        try:
+            file_info = bot.get_file(document.file_id)
+            downloaded_file = bot.download_file(file_info.file_path)
+
+            saved_path = save_uploaded_txt_file(file_name, downloaded_file)
+
+            result = reload_cache()
+
+            bot.reply_to(
+                message,
+                "Em đã nhận và nạp tài liệu mới.\n"
+                f"- File: {saved_path.name}\n"
+                f"- Đã lưu tại: training_materials/uploads/\n"
+                f"- Dung lượng cache training: {result['knowledge_length']} ký tự"
+            )
+
+        except Exception as e:
+            bot.reply_to(
+                message,
+                "Em chưa lưu được tài liệu upload. Anh kiểm tra lại file hoặc thử gửi lại."
+            )
+            print(f"❌ Lỗi upload tài liệu: {e}")
 
 
     @bot.message_handler(func=lambda message: True)
