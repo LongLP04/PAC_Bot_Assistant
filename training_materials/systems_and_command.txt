@@ -1,0 +1,20 @@
+[HƯỚNG DẪN THAO TÁC HỆ THỐNG VÀ CÁC LỆNH TRA CỨU NHANH]
+
+1. QUY TRÌNH ĐỔI TÊN MÁY TÍNH (RENAME PC NAME)
+- Cách 1 (Giao diện đồ họa - GUI): Vào Settings -> System -> About -> Chọn mục "Rename this PC", nhập tên mới theo đúng quy chuẩn đặt tên của công ty (Ví dụ: IT-LEONARD-LAP), sau đó bấm Next và bắt buộc phải chọn Restart Now để máy tính khởi động lại và cập nhật tên mới trên hệ thống mạng.
+- Cách 2 (Dùng lệnh PowerShell - Nhanh cho IT): Mở PowerShell quyền Administrator và chạy lệnh: Rename-Computer -NewName "TEN_MAY_MOI" -Restart (Hệ thống sẽ tự đổi tên và tự động reboot máy sau đó).
+
+2. CÁC LỆNH TRA CỨU KIỂM TRA PHẦN CỨNG BẰNG CMD / POWERSHELL
+- Kiểm tra thông tin CPU: 
+  + Mở CMD gõ lệnh: wmic cpu get name, NumberOfCores, NumberOfLogicalProcessors (Lệnh này sẽ trả về tên chip, số nhân vật lý và số luồng xử lý).
+- Kiểm tra sức khỏe và thông tin ổ cứng (SSD / HDD):
+  + Kiểm tra trạng thái sức khỏe nhanh bằng CMD: wmic diskdrive get status (Nếu trả về chữ "OK" là ổ cứng còn tốt, nếu trả về "Pred Fail" là ổ sắp hỏng, cần backup gấp).
+  + Kiểm tra loại ổ cứng (SSD hay HDD) bằng PowerShell: Get-PhysicalDisk | Select-Object DeviceId, FriendlyName, MediaType (Cột MediaType sẽ chỉ rõ là SSD hay HDD).
+- Kiểm tra dung lượng RAM và số khe cắm:
+  + Mở CMD gõ lệnh: wmic memorychip get devicelocator, capacity, speed (Lệnh này trả về dung lượng từng thanh RAM và tốc độ Bus).
+
+3. CÁC LỆNH KIỂM TRA MẠNG VÀ HỆ THỐNG KHI SỬ LÝ SỰ CỐ
+- Lệnh tra cứu IP máy user: ipconfig /all (Dùng để xem địa chỉ IP, Subnet Mask và địa chỉ MAC vật lý của máy).
+- Lệnh giải phóng và nhận IP mới từ cục Router/DHCP: ipconfig /release (Xóa IP cũ) và ipconfig /renew (Xin cấp IP mới).
+- Lệnh xóa bộ nhớ đệm DNS (Khi user không vào được một trang web cụ thể): ipconfig /flushdns
+- Lệnh kiểm tra bản quyền Windows: slmgr.vbs /dli (Hiện cửa sổ thông tin xem Win đã kích hoạt chưa và thuộc dạng key gì).

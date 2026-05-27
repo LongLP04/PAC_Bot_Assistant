@@ -1,0 +1,23 @@
+[HƯỚNG DẪN QUY TRÌNH XỬ LÝ SỰ CỐ MÁY IN TRONG MẠNG NỘI BỘ]
+
+1. SỰ CỐ MÁY IN HIỂN THỊ OFFLINE / KHÔNG KẾT NỐI
+- Triệu chứng: Máy tính báo máy in đang ở trạng thái "Offline", không thể gửi lệnh in hoặc lệnh in nằm chờ không chạy.
+- Quy trình xử lý từng bước:
+  + Bước 1 (Kiểm tra phần cứng): Kiểm tra trực tiếp dây cáp mạng (LAN) hoặc cáp USB kết nối từ máy tính/hub vào máy in. Đảm bảo đèn tín hiệu cổng mạng ở phía sau máy in có sáng xanh/vàng ổn định.
+  + Bước 2 (Kiểm tra IP): Kiểm tra địa chỉ IP của máy in xem có bị nhảy hoặc mất kết nối không. Mở CMD trên máy tính và gõ lệnh ping thử tới IP của máy in (Ví dụ: ping 192.168.1.X).
+  + Bước 3 (Khởi động lại dịch vụ in): Nếu vẫn không kết nối được, truy cập vào công cụ quản lý hệ thống bằng cách gõ "Services.msc" vào ô tìm kiếm Windows. Tìm đến dịch vụ có tên "Print Spooler", bấm chuột phải vào đó và chọn "Restart" để khởi động lại trình điều khiển in của Windows.
+
+2. LỖI KẸT LỆNH IN (PRINTER QUEUE / JAMMED COMMAND)
+- Triệu chứng: Máy in không hoạt động, có quá nhiều lệnh in xếp hàng chờ xử lý khiến hệ thống bị nghẽn.
+- Quy trình xử lý:
+  + Bước 1: Vào Control Panel, tìm đến mục "Devices and Printers" trên máy tính của người dùng.
+  + Bước 2: Kích đúp vào icon của máy in đang gặp lỗi để mở cửa sổ danh sách lệnh in đang chờ (Printer Queue).
+  + Bước 3: Trên thanh menu của cửa sổ đó, chọn mục "Printer" -> click vào "Cancel All Documents" để xóa sạch toàn bộ các lệnh in cũ đang bị kẹt. Sau khi danh sách trống, hướng dẫn người dùng thực hiện thao tác in lại từ đầu.
+
+3. SỰ CỐ MÁY IN BÁO TRẠNG THÁI "JAM" (KẸT GIẤY THỰC TẾ)
+- Triệu chứng: Máy in chớp đèn đỏ hoặc màn hình LED trên máy in hiển thị chữ "Jam" hoặc "Paper Jam".
+- Quy trình xử lý an toàn:
+  + Bước 1: Hướng dẫn người dùng tắt nguồn máy in trước khi xử lý để đảm bảo an toàn.
+  + Bước 2: Mở khay chứa hộp mực (toner) hoặc khay giấy ra, tìm vị trí tờ giấy đang bị kẹt.
+  + Bước 3: Dùng cả hai tay kéo nhẹ nhàng tờ giấy bị kẹt ra ngoài theo chiều đi của giấy. Tuyệt đối không giật mạnh hoặc kéo lệch một bên vì có thể làm rách giấy để lại mảnh vụn bên trong, hoặc làm hỏng cụm sấy (fuser) của máy in.
+  + Bước 4: Đóng các khay lại, bật nguồn và đợi máy in khởi động lại trạng thái sẵn sàng (Ready).
