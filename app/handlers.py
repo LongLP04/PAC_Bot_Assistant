@@ -4,7 +4,7 @@ from app.memory import get_user_history, add_to_history, clear_history
 from app.prompts import build_system_prompt, build_user_context
 from app.groq_service import ask_groq
 from app.config import BOT_NAME, BOT_VERSION, BOT_ENV, GROQ_MODEL, TRAIN_FOLDER, SKILL_FOLDER
-
+from app.logger import logger
 
 
 def register_handlers():
@@ -119,4 +119,5 @@ def register_handlers():
                 message,
                 "Hệ thống đang bận hoặc gặp lỗi kết nối, anh/chị vui lòng thử lại sau nhé."
             )
+            logger.exception(f"Lỗi khi xử lý câu hỏi của người dùng: {e}")
             print(f"❌ Lỗi vận hành: {e}")
