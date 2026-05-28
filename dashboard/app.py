@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from io import BytesIO
 from pathlib import Path
 from datetime import date
@@ -8,6 +9,16 @@ import pandas as pd
 import streamlit as st
 
 
+# Đảm bảo dashboard import được module trong thư mục app/
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+
+from app.user_store import (
+    get_all_users_as_list,
+    add_or_update_user,
+    delete_user,
+)
 USAGE_LOG_FILE = Path("logs/usage.jsonl")
 
 
@@ -294,12 +305,13 @@ user_summary = df.groupby(
 # TABS
 # =========================
 
-tab_overview, tab_alerts, tab_logs, tab_download = st.tabs(
+tab_overview, tab_alerts, tab_logs, tab_download, tab_users = st.tabs(
     [
         "Tổng quan",
         "Lỗi & cảnh báo",
         "Chi tiết log",
         "Tải báo cáo",
+        "Quản lý user",
     ]
 )
 
@@ -532,3 +544,192 @@ with tab_download:
     st.info(
         "File Excel gồm các sheet: Raw Logs, Daily Summary, Error Summary, User Summary."
     )
+
+# =========================
+# TAB 5 - QUẢN LÝ USER
+# =========================
+
+with tab_users:
+    st.subheader("Quản lý user sử dụng PAC Assistant")
+
+    st.info(
+        "Danh sách user được lưu trực tiếp trong file users.json ở thư mục gốc. "
+        "User có status=active mới được sử dụng bot. Role=admin được dùng các lệnh quản trị."
+    )
+
+    users_list = get_all_users_as_list()
+    users_df = pd.DataFrame(users_list)
+
+    selected_user = None
+
+    if users_df.empty:
+        st.warning("Chưa có user nào trong users.json.")
+    else:
+        st.write("Danh sách user hiện tại")
+
+        # Cho phép click chọn 1 dòng user trong bảng
+        selected_event = st.dataframe(
+            users_df,
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+        )
+
+        selected_rows = selected_event.selection.rows
+
+        if selected_rows:
+            selected_index = selected_rows[0]
+            selected_user = users_df.iloc[selected_index].to_dict()
+
+            st.success(
+                f"Đang chọn user: {selected_user.get('user_id')} | "
+                f"{selected_user.get('name')} | {selected_user.get('role')}"
+            )
+
+    st.divider()
+
+    # =========================
+    # FORM THÊM / CẬP NHẬT USER
+    # =========================
+
+    st.subheader("Thêm hoặc cập nhật user")
+
+    is_selected_admin = (
+        selected_user is not None
+        and selected_user.get("role") == "admin"
+    )
+
+    if is_selected_admin:
+        st.warning(
+            "User đang chọn là admin. Thông tin được hiển thị để xem, "
+            "nhưng không cho chỉnh sửa trực tiếp trên dashboard."
+        )
+
+    default_user_id = selected_user.get("user_id", "") if selected_user else ""
+    default_name = selected_user.get("name", "") if selected_user else ""
+    default_role = selected_user.get("role", "user") if selected_user else "user"
+    default_status = selected_user.get("status", "active") if selected_user else "active"
+    default_note = selected_user.get("note", "") if selected_user else ""
+
+    role_options = ["user", "admin"]
+    status_options = ["active", "inactive"]
+
+    role_index = role_options.index(default_role) if default_role in role_options else 0
+    status_index = status_options.index(default_status) if default_status in status_options else 0
+
+    with st.form("user_form"):
+        col_user_1, col_user_2 = st.columns(2)
+
+        with col_user_1:
+            input_user_id = st.text_input(
+                "Telegram user ID",
+                value=str(default_user_id),
+                placeholder="Ví dụ: 7538013839",
+                disabled=is_selected_admin,
+            )
+
+            input_name = st.text_input(
+                "Tên hiển thị",
+                value=str(default_name),
+                placeholder="Ví dụ: Long",
+                disabled=is_selected_admin,
+            )
+
+        with col_user_2:
+            input_role = st.selectbox(
+                "Role",
+                options=role_options,
+                index=role_index,
+                disabled=is_selected_admin,
+            )
+
+            input_status = st.selectbox(
+                "Trạng thái",
+                options=status_options,
+                index=status_index,
+                disabled=is_selected_admin,
+            )
+
+        input_note = st.text_area(
+            "Ghi chú",
+            value=str(default_note),
+            placeholder="Ví dụ: Phòng IT, Phòng Kỹ thuật, Admin chính...",
+            disabled=is_selected_admin,
+        )
+
+        submitted = st.form_submit_button(
+            "Lưu user",
+            disabled=is_selected_admin,
+        )
+
+        if submitted:
+            if not input_user_id.strip():
+                st.error("Telegram user ID không được để trống.")
+            elif not input_user_id.strip().isdigit():
+                st.error("Telegram user ID chỉ nên gồm chữ số.")
+            else:
+                add_or_update_user(
+                    user_id=input_user_id.strip(),
+                    name=input_name.strip(),
+                    role=input_role,
+                    status=input_status,
+                    note=input_note.strip(),
+                )
+
+                st.success(f"Đã lưu user ID: {input_user_id.strip()}")
+                st.cache_data.clear()
+                st.rerun()
+
+    st.caption(
+        "Muốn thêm user mới: không chọn dòng admin, nhập Telegram user ID mới và bấm Lưu user."
+    )
+
+    st.divider()
+
+    # =========================
+    # XÓA USER - KHÔNG HIỂN THỊ ADMIN
+    # =========================
+
+    st.subheader("Xóa user")
+
+    users_list_delete = get_all_users_as_list()
+
+    # Không cho hiển thị admin trong danh sách xóa
+    deletable_users = [
+        user for user in users_list_delete
+        if user.get("role") != "admin"
+    ]
+
+    if not deletable_users:
+        st.info("Không có user thường để xóa. Admin không được hiển thị trong danh sách xóa.")
+    else:
+        delete_options = [
+            f"{user['user_id']} | {user.get('name', '')} | {user.get('role', '')} | {user.get('status', '')}"
+            for user in deletable_users
+        ]
+
+        selected_delete = st.selectbox(
+            "Chọn user cần xóa",
+            options=delete_options
+        )
+
+        confirm_delete = st.checkbox("Tôi xác nhận muốn xóa user này khỏi users.json")
+
+        if st.button("Xóa user"):
+            if not confirm_delete:
+                st.warning("Anh cần tick xác nhận trước khi xóa.")
+            else:
+                selected_user_id = selected_delete.split("|")[0].strip()
+                deleted = delete_user(selected_user_id)
+
+                if deleted:
+                    st.success(f"Đã xóa user ID: {selected_user_id}")
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.error("Không tìm thấy user để xóa.")
+
+    st.divider()
+
+    
