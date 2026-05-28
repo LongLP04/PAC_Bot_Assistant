@@ -1,0 +1,8 @@
+﻿time,user_id,username,first_name,question,response_preview,model,status,error_code,error_message,input_tokens,output_tokens,total_tokens,estimated_cost_usd,latency_seconds,date
+2026-05-28 08:51:23,7538013839,,LG,máy in của anh không in được,"Dạ anh, theo tài liệu, có thể máy in của anh đang gặp một trong các sự cố sau:
+
+1. Máy in hiển thị offline/không kết nối
+2. Lỗi kẹt lệnh in (Printer Queue/Jammed Command)
+3. Máy in báo trạng thái ""Jam"" (kẹt giấy thực tế)
+
+Để xác định rõ nguyên nhân, em cần biết thêm thông tin từ anh. Anh có thể kiểm",llama-3.1-8b-instant,success,,,3084,137,3221,0.00016516,2.196,2026-05-28

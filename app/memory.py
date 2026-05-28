@@ -5,8 +5,8 @@ def get_user_history(user_id):
     if user_id not in user_history:
         user_history[user_id] = []
 
-    if len(user_history[user_id]) > 20:
-        user_history[user_id] = user_history[user_id][-20:]
+    if len(user_history[user_id]) > 10:
+        user_history[user_id] = user_history[user_id][-10:]
 
     return user_history[user_id]
 

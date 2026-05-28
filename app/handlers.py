@@ -19,6 +19,126 @@ from app.document_service import (
     list_uploaded_documents,
 )
 
+# ===== THÊM MỚI: GHI LOG VẬN HÀNH / TOKEN / CHI PHÍ =====
+from app.usage_tracker import write_usage_log, start_timer, end_timer
+from app.cost_estimator import estimate_tokens_by_text, estimate_cost_usd
+
+
+def get_error_code(error_text: str) -> str:
+    """
+    Phân loại nhanh mã lỗi để đưa vào dashboard.
+    """
+    text = str(error_text).lower()
+
+    if "429" in text:
+        return "429"
+    if "413" in text:
+        return "413"
+    if "timeout" in text or "timed out" in text:
+        return "timeout"
+    if "rate limit" in text:
+        return "rate_limit"
+    if "request too large" in text:
+        return "request_too_large"
+
+    return "unknown"
+
+
+def safe_get_username(message):
+    """
+    Lấy username Telegram an toàn, tránh lỗi khi user không có username.
+    """
+    try:
+        return message.from_user.username
+    except Exception:
+        return None
+
+
+def safe_get_first_name(message):
+    """
+    Lấy first_name Telegram an toàn.
+    """
+    try:
+        return message.from_user.first_name
+    except Exception:
+        return None
+
+
+def write_success_usage_log(
+    message,
+    user_question,
+    bot_response,
+    messages_to_send,
+    latency_seconds,
+):
+    """
+    Ghi log khi xử lý thành công.
+    Hiện tại ask_groq chỉ trả về nội dung trả lời, chưa trả về usage thật từ Groq,
+    nên ta ước tính token bằng độ dài nội dung.
+    """
+    input_text = str(messages_to_send)
+    output_text = bot_response or ""
+
+    input_tokens = estimate_tokens_by_text(input_text)
+    output_tokens = estimate_tokens_by_text(output_text)
+    total_tokens = input_tokens + output_tokens
+    estimated_cost = estimate_cost_usd(input_tokens, output_tokens)
+
+    write_usage_log({
+        "user_id": message.from_user.id,
+        "username": safe_get_username(message),
+        "first_name": safe_get_first_name(message),
+        "question": user_question,
+        "response_preview": output_text[:300],
+        "model": GROQ_MODEL,
+        "status": "success",
+        "error_code": None,
+        "error_message": None,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "estimated_cost_usd": estimated_cost,
+        "latency_seconds": latency_seconds,
+    })
+
+
+def write_error_usage_log(
+    message,
+    user_question,
+    error,
+    latency_seconds,
+    messages_to_send=None,
+):
+    """
+    Ghi log khi xử lý lỗi.
+    Nếu đã tạo được messages_to_send thì tính token theo toàn bộ prompt.
+    Nếu lỗi xảy ra sớm thì chỉ tính theo câu hỏi người dùng.
+    """
+    error_text = str(error)
+    error_code = get_error_code(error_text)
+
+    if messages_to_send:
+        input_tokens = estimate_tokens_by_text(str(messages_to_send))
+    else:
+        input_tokens = estimate_tokens_by_text(user_question or "")
+
+    write_usage_log({
+        "user_id": message.from_user.id if message.from_user else None,
+        "username": safe_get_username(message),
+        "first_name": safe_get_first_name(message),
+        "question": user_question,
+        "response_preview": None,
+        "model": GROQ_MODEL,
+        "status": "error",
+        "error_code": error_code,
+        "error_message": error_text[:500],
+        "input_tokens": input_tokens,
+        "output_tokens": 0,
+        "total_tokens": input_tokens,
+        "estimated_cost_usd": 0,
+        "latency_seconds": latency_seconds,
+    })
+
 
 def register_handlers():
 
@@ -35,7 +155,7 @@ def register_handlers():
         bot.reply_to(
             message,
             "Xin chào👋! Em là PAC Assistant 😊- Trợ lý ảo IT Support nội bộ. "
-            "Anh/chị cần em hỗ trợ vấn đề gì thì nhập nội dung bên dưới ạ."
+            "Anh/chị cần em hỗ trợ vấn đề gì thì nhập nội dung bên dưới ạ. "
             "Anh/chị cứ xưng hô anh/chị thoải mái nhé 😊."
         )
 
@@ -65,6 +185,7 @@ def register_handlers():
         if not is_allowed_user(message):
             deny_access(bot, message)
             return
+
         bot.reply_to(
             message,
             "🟢 PAC Assistant đang trực tuyến và sẵn sàng hỗ trợ anh/chị."
@@ -126,7 +247,7 @@ def register_handlers():
 
         bot.reply_to(message, debug_text)
 
-    #Xư lý lệnh /reload 
+    # Xử lý lệnh /reload
     @bot.message_handler(commands=["reload"])
     def reload_bot_data(message):
         if not is_admin(message):
@@ -178,7 +299,7 @@ def register_handlers():
 
         bot.reply_to(message, "\n".join(lines))
 
-    
+    # Xử lý upload tài liệu .txt
     @bot.message_handler(content_types=["document"])
     def handle_document_upload(message):
         if not is_admin(message):
@@ -217,14 +338,18 @@ def register_handlers():
                 message,
                 "Em chưa lưu được tài liệu upload. Anh kiểm tra lại file hoặc thử gửi lại."
             )
+            logger.exception(f"Lỗi upload tài liệu: {e}")
             print(f"❌ Lỗi upload tài liệu: {e}")
 
-
+    # Xử lý tin nhắn thường
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
         if not is_allowed_user(message):
             deny_access(bot, message)
             return
+
+        timer = start_timer()
+        messages_to_send = None
 
         user_id = message.from_user.id
         user_question = message.text
@@ -253,10 +378,31 @@ def register_handlers():
 
             add_to_history(user_id, user_question, bot_response)
 
+            latency_seconds = end_timer(timer)
+
+            write_success_usage_log(
+                message=message,
+                user_question=user_question,
+                bot_response=bot_response,
+                messages_to_send=messages_to_send,
+                latency_seconds=latency_seconds,
+            )
+
         except Exception as e:
+            latency_seconds = end_timer(timer)
+
             bot.reply_to(
                 message,
                 "Hệ thống đang bận hoặc gặp lỗi kết nối, anh/chị vui lòng thử lại sau nhé."
             )
+
+            write_error_usage_log(
+                message=message,
+                user_question=user_question,
+                error=e,
+                latency_seconds=latency_seconds,
+                messages_to_send=messages_to_send,
+            )
+
             logger.exception(f"Lỗi khi xử lý câu hỏi của người dùng: {e}")
             print(f"❌ Lỗi vận hành: {e}")
