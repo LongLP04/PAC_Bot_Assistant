@@ -19,6 +19,7 @@ from app.document_service import (
     list_uploaded_documents,
     get_supported_upload_extensions_text,
 )
+from app.knowledge_retriever import select_relevant_knowledge
 
 # ===== THÊM MỚI: GHI LOG VẬN HÀNH / TOKEN / CHI PHÍ =====
 from app.usage_tracker import write_usage_log, start_timer, end_timer
@@ -364,15 +365,22 @@ def register_handlers():
             return
 
         try:
-            knowledge = get_knowledge_cache()
+            full_knowledge = get_knowledge_cache()
+            relevant_knowledge = select_relevant_knowledge(
+                question=user_question,
+                knowledge=full_knowledge,
+                max_chars=3000,
+                max_chunks=5,
+            )
+
             base_instructions = get_system_prompt_cache()
 
             system_prompt = build_system_prompt(base_instructions)
-            user_context = build_user_context(knowledge, user_question)
+            user_context = build_user_context(relevant_knowledge, user_question)
             history = get_user_history(user_id)
 
             messages_to_send = [
-                {"role": "system", "content": system_prompt}
+                {"role": "system", "content": system_prompt} 
             ] + history + [
                 {"role": "user", "content": user_context}
             ]
