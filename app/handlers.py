@@ -1,5 +1,5 @@
 from app.bot_instance import bot
-from app.loader import count_txt_files
+from app.loader import count_txt_files, get_supported_extensions_text
 from app.cache import get_knowledge_cache, get_system_prompt_cache, reload_cache
 from app.memory import get_user_history, add_to_history, clear_history
 from app.prompts import build_system_prompt, build_user_context
@@ -17,6 +17,7 @@ from app.document_service import (
     is_txt_file,
     save_uploaded_txt_file,
     list_uploaded_documents,
+    get_supported_upload_extensions_text,
 )
 
 # ===== THÊM MỚI: GHI LOG VẬN HÀNH / TOKEN / CHI PHÍ =====
@@ -237,8 +238,9 @@ def register_handlers():
 
         debug_text = (
             "Thông tin kiểm tra bot:\n"
-            f"- Tài liệu training: {training_count} file .txt\n"
-            f"- Luật/kỹ năng bot: {skills_count} file .txt\n"
+            f"- Tài liệu training: {training_count} file được hỗ trợ\n"
+            f"- Luật/kỹ năng bot: {skills_count} file được hỗ trợ\n"
+            f"- Định dạng hỗ trợ : {get_supported_extensions_text()}\n"
             f"- Cache training: {len(knowledge)} ký tự\n"
             f"- Cache skills: {len(system_prompt)} ký tự\n"
             f"- Model: {GROQ_MODEL}\n"
@@ -312,8 +314,8 @@ def register_handlers():
         if not is_txt_file(file_name):
             bot.reply_to(
                 message,
-                "Hiện tại em chỉ nhận file .txt để nạp tài liệu. "
-                "Anh vui lòng chuyển văn bản sang .txt rồi gửi lại."
+                "File này chưa được hỗ trợ để nạp tài liệu. \n "
+                f"Các định dạng hiện hỗ trợ: {get_supported_upload_extensions_text()}."
             )
             return
 
@@ -330,13 +332,16 @@ def register_handlers():
                 "Em đã nhận và nạp tài liệu mới.\n"
                 f"- File: {saved_path.name}\n"
                 f"- Đã lưu tại: training_materials/uploads/\n"
-                f"- Dung lượng cache training: {result['knowledge_length']} ký tự"
+                f"- Dung lượng cache training: {result['knowledge_length']} ký tự\n"
+                f"- Định dạng hỗ trợ : {get_supported_upload_extensions_text()}"
             )
 
         except Exception as e:
             bot.reply_to(
                 message,
-                "Em chưa lưu được tài liệu upload. Anh kiểm tra lại file hoặc thử gửi lại."
+                "Em chưa lưu được tài liệu upload"
+                "Anh/chị vui lòng kiểm tra lại file, định dạng hoặc thử gửi lại giúp em nhé. \n"
+                f"Các định dạng hiện hỗ trợ: {get_supported_upload_extensions_text()}."
             )
             logger.exception(f"Lỗi upload tài liệu: {e}")
             print(f"❌ Lỗi upload tài liệu: {e}")
