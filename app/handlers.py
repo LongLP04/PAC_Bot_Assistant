@@ -19,7 +19,7 @@ from app.document_service import (
     list_uploaded_documents,
     get_supported_upload_extensions_text,
 )
-from app.knowledge_retriever import select_relevant_knowledge
+from app.knowledge_retriever import select_relevant_knowledge_with_source_policy
 
 # ===== THÊM MỚI: GHI LOG VẬN HÀNH / TOKEN / CHI PHÍ =====
 from app.usage_tracker import write_usage_log, start_timer, end_timer
@@ -324,7 +324,17 @@ def register_handlers():
             file_info = bot.get_file(document.file_id)
             downloaded_file = bot.download_file(file_info.file_path)
 
-            saved_path = save_uploaded_txt_file(file_name, downloaded_file)
+            uploaded_by = {
+                "user_id": message.from_user.id if message.from_user else None,
+                "username": message.from_user.username if message.from_user else None,
+                "first_name": message.from_user.first_name if message.from_user else None,
+            }
+
+            saved_path = save_uploaded_txt_file(
+                file_name,
+                downloaded_file,
+                uploaded_by=uploaded_by,
+            )
 
             result = reload_cache()
 
@@ -366,17 +376,48 @@ def register_handlers():
 
         try:
             full_knowledge = get_knowledge_cache()
-            relevant_knowledge = select_relevant_knowledge(
+
+            retrieval_result = select_relevant_knowledge_with_source_policy(
                 question=user_question,
                 knowledge=full_knowledge,
                 max_chars=3000,
                 max_chunks=5,
             )
 
+            relevant_knowledge = retrieval_result["context"]
+            retrieval_mode = retrieval_result["mode"]
+            retrieval_source = retrieval_result["source"]
+            should_recommend_source_name = retrieval_result["should_recommend_source_name"]
+
             base_instructions = get_system_prompt_cache()
 
             system_prompt = build_system_prompt(base_instructions)
-            user_context = build_user_context(relevant_knowledge, user_question)
+
+            if retrieval_mode == "specified_source" and retrieval_source:
+                source_instruction = (
+                    f"\n\n[LƯU Ý NGUỒN]\n"
+                    f"Người dùng đã chỉ định tài liệu: {retrieval_source}.\n"
+                    f"Chỉ trả lời dựa trên tài liệu này, không suy diễn từ tài liệu khác.\n"
+                    f"Khi trả lời, hãy ghi rõ: Theo tài liệu {retrieval_source}.\n"
+                )
+            elif retrieval_mode == "auto_retrieval" and retrieval_source:
+                source_instruction = (
+                    f"\n\n[LƯU Ý NGUỒN]\n"
+                    f"Người dùng chưa chỉ định tài liệu cụ thể.\n"
+                    f"Hệ thống đã tự chọn tài liệu liên quan nhất: {retrieval_source}.\n"
+                    f"Khi trả lời, hãy ghi rõ nguồn đang tham chiếu nếu phù hợp.\n"
+                )
+            else:
+                source_instruction = (
+                    "\n\n[LƯU Ý NGUỒN]\n"
+                    "Người dùng chưa chỉ định tài liệu cụ thể và hệ thống chưa xác định được nguồn rõ ràng.\n"
+                )
+
+            user_context = build_user_context(
+                relevant_knowledge + source_instruction,
+                user_question,
+            )
+
             history = get_user_history(user_id)
 
             messages_to_send = [
@@ -386,6 +427,11 @@ def register_handlers():
             ]
 
             bot_response = ask_groq(messages_to_send)
+
+            if should_recommend_source_name:
+                bot_response += (
+                    "\n\nGợi ý: Để em tra cứu chính xác hơn, anh/chị có thể hỏi kèm tên tài liệu, "
+                )
 
             bot.reply_to(message, bot_response)
 

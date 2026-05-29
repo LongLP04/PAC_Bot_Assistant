@@ -4,7 +4,6 @@ import sys
 from io import BytesIO
 from pathlib import Path
 from datetime import date
-
 import pandas as pd
 import streamlit as st
 
@@ -12,6 +11,8 @@ import streamlit as st
 # Đảm bảo dashboard import được module trong thư mục app/
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
+
+from app.document_service import list_uploaded_documents
 
 
 from app.user_store import (
@@ -305,13 +306,14 @@ user_summary = df.groupby(
 # TABS
 # =========================
 
-tab_overview, tab_alerts, tab_logs, tab_download, tab_users = st.tabs(
+tab_overview, tab_alerts, tab_logs, tab_download, tab_users, tab_documents = st.tabs(
     [
         "Tổng quan",
         "Lỗi & cảnh báo",
         "Chi tiết log",
         "Tải báo cáo",
         "Quản lý user",
+        "Tài liệu đã nạp",
     ]
 )
 
@@ -732,4 +734,80 @@ with tab_users:
 
     st.divider()
 
+# =========================
+# TAB 6 - TÀI LIỆU ĐÃ NẠP
+# =========================
+
+with tab_documents:
+    st.subheader("Tài liệu đã nạp vào PAC Assistant")
+
+    st.info(
+        "Danh sách này lấy từ thư mục training_materials/uploads/. "
+        "Các tài liệu mới upload trong 24 giờ gần nhất sẽ được đánh dấu là 'Mới'."
+    )
+
+    if st.button("Làm mới danh sách tài liệu"):
+        st.rerun()
+
+    documents = list_uploaded_documents()
+
+    if not documents:
+        st.warning("Chưa có tài liệu nào được upload.")
+    else:
+        docs_df = pd.DataFrame(documents)
+
+        display_columns = [
+            "status",
+            "name",
+            "extension",
+            "size",
+            "uploaded_by",
+            "uploaded_at",
+            "modified",
+        ]
+
+        existing_columns = [
+            col for col in display_columns
+            if col in docs_df.columns
+        ]
+
+        docs_df = docs_df[existing_columns]
+
+        docs_df = docs_df.rename(columns={
+            "status": "Trạng thái",
+            "name": "Tên tài liệu",
+            "extension": "Định dạng",
+            "size": "Dung lượng bytes",
+            "uploaded_by": "Người tải",
+            "uploaded_at": "Thời gian tải",
+            "modified": "Cập nhật file",
+        })
+
+        new_count = len([
+            doc for doc in documents
+            if doc.get("is_new")
+        ])
+
+        total_count = len(documents)
+
+        col_doc_1, col_doc_2 = st.columns(2)
+
+        with col_doc_1:
+            st.metric("Tổng tài liệu đã nạp", total_count)
+
+        with col_doc_2:
+            st.metric("Tài liệu mới trong 24h", new_count)
+
+        st.dataframe(
+            docs_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.download_button(
+            label="Tải danh sách tài liệu CSV",
+            data=docs_df.to_csv(index=False).encode("utf-8-sig"),
+            file_name="pac_bot_uploaded_documents.csv",
+            mime="text/csv",
+        )
     

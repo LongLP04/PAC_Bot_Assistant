@@ -337,3 +337,211 @@ def get_retrieval_debug_info(question: str, knowledge: str) -> str:
         lines.append(f"- {item['source']} | điểm: {item['score']}")
 
     return "\n".join(lines)
+
+def get_available_sources(knowledge: str) -> List[str]:
+    documents = split_knowledge_documents(knowledge)
+    return [doc["source"] for doc in documents]
+
+def extract_requested_source(question: str, available_sources: List[str]) -> str | None:
+    """
+    Kiểm tra người dùng có nhắc tên tài liệu/file trong câu hỏi không.
+
+    Nguyên tắc:
+    - Chỉ dựa trên tên file/tên tài liệu.
+    - Không code cứng theo nghiệp vụ như IP, thiết bị, hợp đồng, nhân sự...
+    - Hỗ trợ:
+        + Nhắc đủ tên file: reventory_update.xlsx
+        + Nhắc tên không đuôi: reventory_update
+        + Nhắc một phần tên có ý nghĩa: reventory
+    """
+    if not question or not available_sources:
+        return None
+
+    normalized_question = normalize_text(question)
+
+    question_tokens = set(
+        token
+        for token in re.split(r"[\s_\-\.]+", normalized_question)
+        if len(token) >= 3
+    )
+
+    best_source = None
+    best_score = 0
+
+    for source in available_sources:
+        source_text = str(source).replace("\\", "/")
+        file_name = source_text.split("/")[-1]
+
+        normalized_source = normalize_text(source)
+        normalized_file_name = normalize_text(file_name)
+
+        file_name_without_ext = re.sub(
+            r"\.(txt|md|docx|xlsx|csv)$",
+            "",
+            normalized_file_name,
+        )
+
+        file_tokens = [
+            token
+            for token in re.split(r"[\s_\-\.]+", file_name_without_ext)
+            if len(token) >= 3
+        ]
+
+        score = 0
+
+        # Người dùng nhắc nguyên source, ví dụ uploads/reventory_update.xlsx
+        if normalized_source in normalized_question:
+            score += 120
+
+        # Người dùng nhắc đúng tên file, ví dụ reventory_update.xlsx
+        if normalized_file_name in normalized_question:
+            score += 120
+
+        # Người dùng nhắc tên file không đuôi, ví dụ reventory_update
+        if file_name_without_ext and file_name_without_ext in normalized_question:
+            score += 100
+
+        # Người dùng nhắc một phần tên file, ví dụ reventory
+        for token in file_tokens:
+            if token in question_tokens:
+                score += 40
+
+            for question_token in question_tokens:
+                if len(token) >= 5 and len(question_token) >= 5:
+                    if question_token in token or token in question_token:
+                        score += 30
+
+        if score > best_score:
+            best_score = score
+            best_source = source
+
+    if best_score >= 35:
+        return best_source
+
+    return None
+
+def select_knowledge_by_source(source_name: str, knowledge: str) -> str:
+    documents = split_knowledge_documents(knowledge)
+
+    for document in documents:
+        if document["source"] == source_name:
+            return (
+                f"[NGUỒN TÀI LIỆU ĐƯỢC CHỈ ĐỊNH: {document['source']}]\n"
+                f"{document['content']}"
+            )
+
+    return ""
+
+def get_top_relevant_sources(
+    question: str,
+    knowledge: str,
+    max_sources: int = 5,
+) -> List[Dict[str, object]]:
+    keywords = extract_keywords(question)
+    chunks = build_chunks_from_knowledge(knowledge)
+
+    source_scores = {}
+
+    for chunk in chunks:
+        score = score_chunk(question, keywords, chunk)
+
+        if score <= 0:
+            continue
+
+        source = chunk.get("source", "knowledge")
+
+        if source not in source_scores:
+            source_scores[source] = 0
+
+        source_scores[source] += score
+
+    ranked_sources = [
+        {
+            "source": source,
+            "score": score,
+        }
+        for source, score in source_scores.items()
+    ]
+
+    ranked_sources = sorted(
+        ranked_sources,
+        key=lambda item: item["score"],
+        reverse=True,
+    )
+
+    return ranked_sources[:max_sources]
+
+
+def select_relevant_knowledge_with_source_policy(
+    question: str,
+    knowledge: str,
+    max_chars: int = DEFAULT_MAX_CHARS,
+    max_chunks: int = DEFAULT_MAX_CHUNKS,
+) -> Dict[str, object]:
+    """
+    Chính sách chọn tài liệu:
+    1. Nếu người dùng nhắc tên tài liệu → chỉ lấy đúng tài liệu đó.
+    2. Nếu không nhắc tên tài liệu → dùng bộ lọc liên quan hiện tại.
+    3. Trả thêm metadata để handlers biết có cần nhắc user hỏi kèm tên tài liệu không.
+    """
+    available_sources = get_available_sources(knowledge)
+
+    requested_source = extract_requested_source(
+        question=question,
+        available_sources=available_sources,
+    )
+
+    if requested_source:
+        selected_content = select_knowledge_by_source(
+            source_name=requested_source,
+            knowledge=knowledge,
+        )
+
+        if selected_content:
+            return {
+                "context": selected_content[:max_chars],
+                "mode": "specified_source",
+                "source": requested_source,
+                "should_recommend_source_name": False,
+                "available_sources": available_sources,
+                "top_sources": [
+                    {
+                        "source": requested_source,
+                        "score": 999,
+                    }
+                ],
+            }
+
+    relevant_context = select_relevant_knowledge(
+        question=question,
+        knowledge=knowledge,
+        max_chars=max_chars,
+        max_chunks=max_chunks,
+    )
+
+    top_sources = get_top_relevant_sources(
+        question=question,
+        knowledge=knowledge,
+        max_sources=5,
+    )
+
+    selected_source = top_sources[0]["source"] if top_sources else None
+
+    return {
+        "context": relevant_context,
+        "mode": "auto_retrieval",
+        "source": selected_source,
+        "should_recommend_source_name": True,
+        "available_sources": available_sources,
+        "top_sources": top_sources,
+    }
+        
+
+
+
+
+        
+
+        
+
+
