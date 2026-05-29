@@ -19,9 +19,13 @@ from app.document_service import (
     list_uploaded_documents,
     get_supported_upload_extensions_text,
 )
-from app.knowledge_retriever import select_relevant_knowledge_with_source_policy
+from app.knowledge_retriever import (
+    select_relevant_knowledge_with_source_policy,
+    get_available_sources,
+    extract_requested_source,
+)
 
-# ===== THÊM MỚI: GHI LOG VẬN HÀNH / TOKEN / CHI PHÍ =====
+# Ghi log vận hành / token / chi phí
 from app.usage_tracker import write_usage_log, start_timer, end_timer
 from app.cost_estimator import estimate_tokens_by_text, estimate_cost_usd
 
@@ -64,6 +68,53 @@ def safe_get_first_name(message):
         return message.from_user.first_name
     except Exception:
         return None
+
+
+def is_document_lookup_request(text: str) -> bool:
+    """
+    Nhận diện câu hỏi có ý định tra cứu tài liệu.
+
+    Nguyên tắc:
+    - Chỉ kích hoạt retrieval khi user nói rõ đang hỏi theo file/tài liệu.
+    - Không dùng các từ quá rộng như 'báo cáo', 'hồ sơ' riêng lẻ.
+    - Tránh trường hợp câu hỏi thường bị match nhầm với tên file.
+    """
+    if not text:
+        return False
+
+    normalized_text = text.lower()
+
+    document_indicators = [
+        "theo file",
+        "theo tài liệu",
+        "theo tai lieu",
+        "theo văn bản",
+        "theo van ban",
+        "trong file",
+        "trong tài liệu",
+        "trong tai lieu",
+        "trong văn bản",
+        "trong van ban",
+        "tóm tắt file",
+        "tom tat file",
+        "tóm tắt tài liệu",
+        "tom tat tai lieu",
+        "tóm tắt văn bản",
+        "tom tat van ban",
+        "liệt kê tài liệu",
+        "liet ke tai lieu",
+        "danh sách tài liệu",
+        "danh sach tai lieu",
+        "các tài liệu đã nạp",
+        "cac tai lieu da nap",
+        "các file đã nạp",
+        "cac file da nap",
+    ]
+
+    return any(
+        indicator in normalized_text
+        for indicator in document_indicators
+    )
 
 
 def write_success_usage_log(
@@ -142,6 +193,59 @@ def write_error_usage_log(
     })
 
 
+def build_docs_list_text():
+    """
+    Tạo nội dung danh sách tài liệu đã upload.
+    """
+    docs = list_uploaded_documents()
+
+    if not docs:
+        return "Hiện chưa có tài liệu upload nào trong training_materials/uploads/."
+
+    lines = ["Danh sách tài liệu đã upload:"]
+
+    for index, doc in enumerate(docs, start=1):
+        lines.append(
+            f"{index}. {doc['name']} | {doc['size']} bytes | cập nhật: {doc['modified']}"
+        )
+
+    return "\n".join(lines)
+
+
+def is_list_documents_request(text: str) -> bool:
+    """
+    Nhận diện câu hỏi tự nhiên yêu cầu liệt kê tài liệu đã nạp.
+    """
+    if not text:
+        return False
+
+    normalized_text = text.lower()
+
+    keyword_groups = [
+        ["liệt kê", "tài liệu"],
+        ["liet ke", "tai lieu"],
+        ["danh sách", "tài liệu"],
+        ["danh sach", "tai lieu"],
+        ["tài liệu", "đã nạp"],
+        ["tai lieu", "da nap"],
+        ["tài liệu", "đã upload"],
+        ["tai lieu", "da upload"],
+        ["file", "đã nạp"],
+        ["file", "da nap"],
+        ["file", "đã upload"],
+        ["file", "da upload"],
+        ["các file", "đang có"],
+        ["cac file", "dang co"],
+        ["các tài liệu", "đang có"],
+        ["cac tai lieu", "dang co"],
+    ]
+
+    return any(
+        all(keyword in normalized_text for keyword in group)
+        for group in keyword_groups
+    )
+
+
 def register_handlers():
 
     # Xử lý lệnh /start
@@ -176,7 +280,8 @@ def register_handlers():
             "- Lỗi máy tính, Windows, phần mềm cơ bản\n"
             "- Hướng dẫn sử dụng hệ thống, tài khoản, dữ liệu nội bộ\n"
             "...\n\n"
-            "Anh/chị chỉ cần mô tả lỗi, ví dụ: “máy in không in được”, “Outlook không gửi mail được”."
+            "Anh/chị chỉ cần mô tả lỗi, ví dụ: “máy in không in được”, "
+            "“Outlook không gửi mail được”."
         )
 
         bot.reply_to(message, help_text)
@@ -284,25 +389,9 @@ def register_handlers():
             deny_admin(bot, message)
             return
 
-        docs = list_uploaded_documents()
+        bot.reply_to(message, build_docs_list_text())
 
-        if not docs:
-            bot.reply_to(
-                message,
-                "Hiện chưa có tài liệu upload nào trong training_materials/uploads/."
-            )
-            return
-
-        lines = ["Danh sách tài liệu đã upload:"]
-
-        for index, doc in enumerate(docs, start=1):
-            lines.append(
-                f"{index}. {doc['name']} | {doc['size']} bytes | cập nhật: {doc['modified']}"
-            )
-
-        bot.reply_to(message, "\n".join(lines))
-
-    # Xử lý upload tài liệu .txt
+    # Xử lý upload tài liệu
     @bot.message_handler(content_types=["document"])
     def handle_document_upload(message):
         if not is_admin(message):
@@ -315,7 +404,7 @@ def register_handlers():
         if not is_txt_file(file_name):
             bot.reply_to(
                 message,
-                "File này chưa được hỗ trợ để nạp tài liệu. \n "
+                "File này chưa được hỗ trợ để nạp tài liệu.\n"
                 f"Các định dạng hiện hỗ trợ: {get_supported_upload_extensions_text()}."
             )
             return
@@ -344,14 +433,14 @@ def register_handlers():
                 f"- File: {saved_path.name}\n"
                 f"- Đã lưu tại: training_materials/uploads/\n"
                 f"- Dung lượng cache training: {result['knowledge_length']} ký tự\n"
-                f"- Định dạng hỗ trợ : {get_supported_upload_extensions_text()}"
+                f"- Định dạng hỗ trợ: {get_supported_upload_extensions_text()}"
             )
 
         except Exception as e:
             bot.reply_to(
                 message,
-                "Em chưa lưu được tài liệu upload"
-                "Anh/chị vui lòng kiểm tra lại file, định dạng hoặc thử gửi lại giúp em nhé. \n"
+                "Em chưa lưu được tài liệu upload. "
+                "Anh/chị vui lòng kiểm tra lại file, định dạng hoặc thử gửi lại giúp em nhé.\n"
                 f"Các định dạng hiện hỗ trợ: {get_supported_upload_extensions_text()}."
             )
             logger.exception(f"Lỗi upload tài liệu: {e}")
@@ -375,42 +464,83 @@ def register_handlers():
             return
 
         try:
+            # Câu hỏi quản trị tài liệu: xử lý bằng code, không gọi Groq
+            if is_list_documents_request(user_question):
+                if not is_admin(message):
+                    deny_admin(bot, message)
+                    return
+
+                bot.reply_to(message, build_docs_list_text())
+                return
+
             full_knowledge = get_knowledge_cache()
+            history = get_user_history(user_id)
 
-            retrieval_result = select_relevant_knowledge_with_source_policy(
-                question=user_question,
-                knowledge=full_knowledge,
-                max_chars=3000,
-                max_chunks=5,
-            )
+            document_lookup_intent = is_document_lookup_request(user_question)
 
-            relevant_knowledge = retrieval_result["context"]
-            retrieval_mode = retrieval_result["mode"]
-            retrieval_source = retrieval_result["source"]
-            should_recommend_source_name = retrieval_result["should_recommend_source_name"]
+            current_requested_source = None
+
+            if document_lookup_intent:
+                available_sources = get_available_sources(full_knowledge)
+
+                current_requested_source = extract_requested_source(
+                    question=user_question,
+                    available_sources=available_sources,
+                )
+
+            use_document_retrieval = document_lookup_intent
+
+            if use_document_retrieval:
+                retrieval_result = select_relevant_knowledge_with_source_policy(
+                    question=user_question,
+                    knowledge=full_knowledge,
+                    max_chars=3000,
+                    max_chunks=5,
+                )
+
+                relevant_knowledge = retrieval_result["context"]
+                retrieval_mode = retrieval_result["mode"]
+                retrieval_source = retrieval_result["source"]
+                should_recommend_source_name = retrieval_result["should_recommend_source_name"]
+
+            else:
+                relevant_knowledge = ""
+                retrieval_mode = "normal_chat"
+                retrieval_source = None
+                should_recommend_source_name = False
 
             base_instructions = get_system_prompt_cache()
-
             system_prompt = build_system_prompt(base_instructions)
 
             if retrieval_mode == "specified_source" and retrieval_source:
                 source_instruction = (
                     f"\n\n[LƯU Ý NGUỒN]\n"
                     f"Người dùng đã chỉ định tài liệu: {retrieval_source}.\n"
-                    f"Chỉ trả lời dựa trên tài liệu này, không suy diễn từ tài liệu khác.\n"
-                    f"Khi trả lời, hãy ghi rõ: Theo tài liệu {retrieval_source}.\n"
+                    f"Trước tiên hãy kiểm tra thông tin trong tài liệu này.\n"
+                    f"Nếu tài liệu không có đủ thông tin để trả lời, hãy nói rõ: "
+                    f"'Trong tài liệu chưa có thông tin này', sau đó trả lời bằng kiến thức IT Support chung.\n"
+                    f"Tuyệt đối không tự chuyển sang tài liệu khác.\n"
+                    f"Không tự ghi dòng nguồn tài liệu trong câu trả lời, hệ thống sẽ tự thêm ở cuối.\n"
                 )
+
             elif retrieval_mode == "auto_retrieval" and retrieval_source:
                 source_instruction = (
                     f"\n\n[LƯU Ý NGUỒN]\n"
-                    f"Người dùng chưa chỉ định tài liệu cụ thể.\n"
+                    f"Người dùng có ý định tra cứu tài liệu nhưng chưa chỉ định rõ file.\n"
                     f"Hệ thống đã tự chọn tài liệu liên quan nhất: {retrieval_source}.\n"
-                    f"Khi trả lời, hãy ghi rõ nguồn đang tham chiếu nếu phù hợp.\n"
+                    f"Nếu tài liệu này không có đủ thông tin để trả lời, hãy nói rõ: "
+                    f"'Tài liệu đang tham chiếu chưa có thông tin này', sau đó trả lời bằng kiến thức IT Support chung.\n"
+                    f"Tuyệt đối không tự chuyển sang tài liệu khác.\n"
+                    f"Không tự ghi dòng nguồn tài liệu trong câu trả lời, hệ thống sẽ tự thêm ở cuối.\n"
                 )
+
             else:
                 source_instruction = (
-                    "\n\n[LƯU Ý NGUỒN]\n"
-                    "Người dùng chưa chỉ định tài liệu cụ thể và hệ thống chưa xác định được nguồn rõ ràng.\n"
+                    "\n\n[LƯU Ý HỘI THOẠI]\n"
+                    "Người dùng đang trao đổi hoặc xử lý sự cố thông thường, không phải đang yêu cầu tra cứu tài liệu. "
+                    "Không tự mở đầu bằng 'theo tài liệu'. "
+                    "Không tự truy cứu bất kỳ tài liệu nội bộ nào. "
+                    "Hãy trả lời theo ngữ cảnh hội thoại và vai trò IT Support nội bộ.\n"
                 )
 
             user_context = build_user_context(
@@ -418,19 +548,35 @@ def register_handlers():
                 user_question,
             )
 
-            history = get_user_history(user_id)
-
             messages_to_send = [
-                {"role": "system", "content": system_prompt} 
+                {"role": "system", "content": system_prompt}
             ] + history + [
                 {"role": "user", "content": user_context}
             ]
 
             bot_response = ask_groq(messages_to_send)
 
+            source_note = ""
+
+            if retrieval_source:
+                source_name = str(retrieval_source).replace("\\", "/").split("/")[-1]
+
+                if retrieval_mode == "specified_source":
+                    source_note = (
+                        f"\n\nNguồn tài liệu được chỉ định: {source_name}"
+                    )
+
+                elif retrieval_mode == "auto_retrieval":
+                    source_note = (
+                        f"\n\nNguồn hệ thống tự tham chiếu: {source_name}"
+                    )
+
+            if source_note and source_note not in bot_response:
+                bot_response += source_note
+
             if should_recommend_source_name:
                 bot_response += (
-                    "\n\nGợi ý: Để em tra cứu chính xác hơn, anh/chị có thể hỏi kèm tên tài liệu, "
+                    "\n\nGợi ý: Để em tra cứu chính xác hơn, anh/chị có thể hỏi kèm tên tài liệu.😊"
                 )
 
             bot.reply_to(message, bot_response)
