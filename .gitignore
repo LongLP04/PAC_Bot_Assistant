@@ -1,8 +1,57 @@
+# =========================
+# ENV / SECRET
+# =========================
 .env
+*.env
+!.env.example
+
+# =========================
+# PYTHON
+# =========================
 __pycache__/
+*.py[cod]
+*.pyo
+*.pyd
 *.pyc
 .venv/
 venv/
-logs/
+env/
+
+# =========================
+# LOGS / REPORTS
+# =========================
+logs/*
+!logs/.gitkeep
+reports/*
+!reports/.gitkeep
 *.log
+*.jsonl
+
+# =========================
+# USER DATA
+# =========================
 users.json
+
+# =========================
+# UPLOADED INTERNAL DOCUMENTS
+# =========================
+training_materials/uploads/*
+!training_materials/uploads/.gitkeep
+
+# =========================
+# OFFICE TEMP FILES
+# =========================
+~$*
+
+# =========================
+# IDE / OS
+# =========================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# =========================
+# STREAMLIT CACHE
+# =========================
+.streamlit/secrets.toml
