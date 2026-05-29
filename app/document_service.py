@@ -168,3 +168,72 @@ def list_uploaded_documents():
 
 def get_supported_upload_extensions_text():
     return ", ".join(sorted(SUPPORTED_EXTENSIONS))
+
+
+
+def delete_uploaded_document(file_name: str):
+    """
+    Xóa tài liệu đã upload khỏi training_materials/uploads/.
+    Chỉ cho xóa theo tên file, không cho truyền path tùy ý để tránh rủi ro.
+    """
+    ensure_upload_folder()
+
+    safe_name = Path(file_name).name
+
+    if not safe_name:
+        return {
+            "success": False,
+            "message": "Tên file không hợp lệ.",
+        }
+
+    file_path = UPLOAD_FOLDER / safe_name
+
+    if not file_path.exists():
+        return {
+            "success": False,
+            "message": "Không tìm thấy file cần xóa.",
+        }
+
+    if not file_path.is_file():
+        return {
+            "success": False,
+            "message": "Đối tượng cần xóa không phải file.",
+        }
+
+    if not is_supported_file(file_path.name):
+        return {
+            "success": False,
+            "message": "File này không thuộc định dạng tài liệu được hỗ trợ.",
+        }
+
+    try:
+        file_path.unlink()
+
+        # Ghi log xóa file nếu hệ thống có hàm log upload
+        try:
+            save_document_upload_log({
+                "time": datetime.now().isoformat(timespec="seconds"),
+                "action": "delete",
+                "file_name": safe_name,
+                "file_path": str(file_path).replace("\\", "/"),
+                "extension": file_path.suffix.lower(),
+            })
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "message": f"Đã xóa tài liệu: {safe_name}",
+        }
+
+    except PermissionError:
+        return {
+            "success": False,
+            "message": "Không xóa được file vì file có thể đang được mở hoặc bị khóa quyền.",
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Lỗi khi xóa file: {e}",
+        }

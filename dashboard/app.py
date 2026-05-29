@@ -12,7 +12,7 @@ import streamlit as st
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.document_service import list_uploaded_documents
+from app.document_service import list_uploaded_documents, delete_uploaded_document
 
 
 from app.user_store import (
@@ -746,8 +746,17 @@ with tab_documents:
         "Các tài liệu mới upload trong 24 giờ gần nhất sẽ được đánh dấu là 'Mới'."
     )
 
-    if st.button("Làm mới danh sách tài liệu"):
-        st.rerun()
+    col_refresh, col_note = st.columns([1, 3])
+
+    with col_refresh:
+        if st.button("Làm mới danh sách tài liệu"):
+            st.cache_data.clear()
+            st.rerun()
+
+    with col_note:
+        st.caption(
+            "Sau khi xóa tài liệu, nên gõ /reload trên Telegram để bot nạp lại dữ liệu mới."
+        )
 
     documents = list_uploaded_documents()
 
@@ -755,6 +764,71 @@ with tab_documents:
         st.warning("Chưa có tài liệu nào được upload.")
     else:
         docs_df = pd.DataFrame(documents)
+
+        total_count = len(documents)
+        new_count = len([doc for doc in documents if doc.get("is_new")])
+        total_size = int(docs_df["size"].fillna(0).sum()) if "size" in docs_df.columns else 0
+
+        col_doc_1, col_doc_2, col_doc_3 = st.columns(3)
+
+        with col_doc_1:
+            st.metric("Tổng tài liệu đã nạp", total_count)
+
+        with col_doc_2:
+            st.metric("Tài liệu mới trong 24h", new_count)
+
+        with col_doc_3:
+            st.metric("Tổng dung lượng", f"{total_size:,} bytes")
+
+        st.divider()
+
+        st.subheader("Bộ lọc tài liệu")
+
+        filter_col_1, filter_col_2, filter_col_3 = st.columns(3)
+
+        with filter_col_1:
+            keyword_filter = st.text_input(
+                "Tìm theo tên tài liệu",
+                placeholder="Ví dụ: reventory, chính sách, thiết bị..."
+            )
+
+        with filter_col_2:
+            extension_options = sorted(docs_df["extension"].dropna().unique().tolist()) if "extension" in docs_df.columns else []
+            selected_extensions = st.multiselect(
+                "Lọc theo định dạng",
+                options=extension_options,
+                default=[],
+            )
+
+        with filter_col_3:
+            status_options = sorted(docs_df["status"].dropna().unique().tolist()) if "status" in docs_df.columns else []
+            selected_statuses = st.multiselect(
+                "Lọc theo trạng thái",
+                options=status_options,
+                default=[],
+            )
+
+        filtered_docs_df = docs_df.copy()
+
+        if keyword_filter.strip():
+            keyword = keyword_filter.strip().lower()
+            filtered_docs_df = filtered_docs_df[
+                filtered_docs_df["name"].fillna("").str.lower().str.contains(keyword)
+            ]
+
+        if selected_extensions:
+            filtered_docs_df = filtered_docs_df[
+                filtered_docs_df["extension"].isin(selected_extensions)
+            ]
+
+        if selected_statuses:
+            filtered_docs_df = filtered_docs_df[
+                filtered_docs_df["status"].isin(selected_statuses)
+            ]
+
+        st.divider()
+
+        st.subheader("Danh sách tài liệu")
 
         display_columns = [
             "status",
@@ -768,12 +842,12 @@ with tab_documents:
 
         existing_columns = [
             col for col in display_columns
-            if col in docs_df.columns
+            if col in filtered_docs_df.columns
         ]
 
-        docs_df = docs_df[existing_columns]
+        display_df = filtered_docs_df[existing_columns].copy()
 
-        docs_df = docs_df.rename(columns={
+        display_df = display_df.rename(columns={
             "status": "Trạng thái",
             "name": "Tên tài liệu",
             "extension": "Định dạng",
@@ -783,31 +857,52 @@ with tab_documents:
             "modified": "Cập nhật file",
         })
 
-        new_count = len([
-            doc for doc in documents
-            if doc.get("is_new")
-        ])
-
-        total_count = len(documents)
-
-        col_doc_1, col_doc_2 = st.columns(2)
-
-        with col_doc_1:
-            st.metric("Tổng tài liệu đã nạp", total_count)
-
-        with col_doc_2:
-            st.metric("Tài liệu mới trong 24h", new_count)
-
         st.dataframe(
-            docs_df,
+            display_df,
             use_container_width=True,
             hide_index=True,
         )
 
         st.download_button(
             label="Tải danh sách tài liệu CSV",
-            data=docs_df.to_csv(index=False).encode("utf-8-sig"),
+            data=display_df.to_csv(index=False).encode("utf-8-sig"),
             file_name="pac_bot_uploaded_documents.csv",
             mime="text/csv",
+        )
+
+        st.divider()
+
+        st.subheader("Xóa tài liệu")
+
+        if filtered_docs_df.empty:
+            st.info("Không có tài liệu phù hợp với bộ lọc để xóa.")
+        else:
+            delete_options = filtered_docs_df["name"].dropna().tolist()
+
+            selected_delete_file = st.selectbox(
+                "Chọn tài liệu cần xóa",
+                options=delete_options,
+            )
+
+            confirm_delete_document = st.checkbox(
+                "Tôi xác nhận muốn xóa tài liệu này khỏi training_materials/uploads/"
+            )
+
+            if st.button("Xóa tài liệu"):
+                if not confirm_delete_document:
+                    st.warning("Anh cần tick xác nhận trước khi xóa tài liệu.")
+                else:
+                    result = delete_uploaded_document(selected_delete_file)
+
+                    if result.get("success"):
+                        st.success(result.get("message", "Đã xóa tài liệu."))
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error(result.get("message", "Không xóa được tài liệu."))
+
+        st.warning(
+            "Lưu ý: Xóa tài liệu trên dashboard chỉ xóa file khỏi thư mục uploads. "
+            "Để bot cập nhật lại bộ nhớ tài liệu, cần gõ /reload trên Telegram."
         )
     
